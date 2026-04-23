@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}Log a Visit — F1 Circuit Journal{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">📍 Log a Visit</h1>
+<p class="text-muted">Record a circuit visit against a trip — or plan ahead for one you haven't attended yet.</p>
+<hr>
+
+<!-- ═══════ SECTION 1 — LOG A NEW VISIT ═══════ -->
+<h3 class="mb-3">➕ Log a New Visit</h3>
+
+{% if not trips %}
+  <div class="alert alert-warning">
+    You need at least one trip before logging a visit. Go to <a href="{% url 'trips_list' %}"><strong>My Trips</strong></a> first.
+  </div>
+{% elif not circuits %}
+  <div class="alert alert-warning">No circuits in the database yet.</div>
+{% else %}
+  {% if prefill_cid %}
+    {% for c in circuits %}{% if c.id == prefill_cid %}
+      <div class="alert alert-info">Circuit pre-selected from Explorer: <strong>{{ c.name }} ({{ c.country }})</strong></div>
+    {% endif %}{% endfor %}
+  {% endif %}
+
+  <form method="post" action="{% url 'visits_list' %}" class="mb-4 card card-body">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Trip *</label>
+        <select name="trip_id" class="form-select" required>
+          {% for t in trips %}
+            <option value="{{ t.id }}">{{ t.trip_name }} ({{ t.start_date|date:"M d, Y" }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Circuit *</label>
+        <select name="circuit_id" class="form-select" required>
+          {% for c in circuits %}
+            <option value="{{ c.id }}" {% if c.id == prefill_cid %}selected{% endif %}>
+              {{ c.name }} ({{ c.country }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Race Year *</label>
+        <input type="number" name="race_year" class="form-control"
+               min="1950" max="{{ current_year|add:2 }}" value="{{ current_year }}" required>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <div class="form-check">
+          <input type="checkbox" name="attended" id="add_attended" class="form-check-input">
+          <label for="add_attended" class="form-check-label">Attended?</label>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Ticket Type</label>
+        <input type="text" name="ticket_type" class="form-control" placeholder="e.g. General Admission">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Personal Rating</label>
+        <select name="personal_rating" class="form-select">
+          <option value="">— (no rating)</option>
+          <option value="1">1 ⭐</option>
+          <option value="2">2 ⭐⭐</option>
+          <option value="3">3 ⭐⭐⭐</option>
+          <option value="4">4 ⭐⭐⭐⭐</option>
+          <option value="5">5 ⭐⭐⭐⭐⭐</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Seating Section</label>
+        <input type="text" name="seating_section" class="form-control" placeholder="e.g. Tribune K, Turn 1">
+      </div>
+      <div class="col-md-6 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Log Visit</button>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Personal Notes</label>
+        <textarea name="personal_notes" rows="3" class="form-control"
+                  placeholder="How was the atmosphere? Highlights? Things to know for next time…"></textarea>
+      </div>
+    </div>
+  </form>
+{% endif %}
+
+<hr>
+
+<!-- ═══════ SECTION 2 — EXISTING VISITS ═══════ -->
+<h3 class="mb-3">📋 Existing Visits</h3>
+{% if not visits %}
+  <div class="alert alert-info">No visits logged yet.</div>
+{% else %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead class="table-light">
+      <tr><th>Circuit</th><th>Trip</th><th>Date</th>
+          <th>Rating</th><th>Attended</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for v in visits %}
+      <tr>
+        <td>{{ v.circuit }}</td>
+        <td>{{ v.trip }}</td>
+        <td>{% if v.trip_date %}{{ v.trip_date|date:"m/d/Y" }}{% else %}{{ v.race_year }}{% endif %}</td>
+        <td>
+          {% if v.personal_rating %}
+            <div class="d-flex align-items-center gap-2">
+              <div class="rating-bar"><div class="rating-bar-fill" style="width:{{ v.rating_pct }}%"></div></div>
+              <small class="text-muted">{{ v.personal_rating }}/5</small>
+            </div>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td>{% if v.attended %}✅{% else %}📋{% endif %}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary"
+                  data-bs-toggle="modal" data-bs-target="#editVisit{{ v.id }}">✏️</button>
+          <button class="btn btn-sm btn-outline-danger"
+                  data-bs-toggle="modal" data-bs-target="#delVisit{{ v.id }}">🗑️</button>
+        </td>
+      </tr>
+      {% if v.personal_notes %}
+        <tr><td colspan="6" class="small text-muted bg-light">📝 {{ v.personal_notes }}</td></tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Edit / Delete modals -->
+{% for v in visits %}
+<div class="modal fade" id="editVisit{{ v.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form method="post" action="{% url 'visit_edit' v.id %}" class="modal-content">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{% url 'visits_list' %}">
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Edit Visit — {{ v.circuit }} ({{ v.race_year }})</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Trip *</label>
+            <select name="trip_id" class="form-select" required>
+              {% for t in trips %}
+                <option value="{{ t.id }}" {% if t.id == v.trip_id %}selected{% endif %}>
+                  {{ t.trip_name }} ({{ t.start_date|date:"M d, Y" }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Circuit *</label>
+            <select name="circuit_id" class="form-select" required>
+              {% for c in circuits %}
+                <option value="{{ c.id }}" {% if c.id == v.circuit_id %}selected{% endif %}>
+                  {{ c.name }} ({{ c.country }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Race Year *</label>
+            <input type="number" name="race_year" class="form-control"
+                   min="1950" max="{{ current_year|add:2 }}" value="{{ v.race_year }}" required>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <div class="form-check">
+              <input type="checkbox" name="attended" id="vatt_{{ v.id }}"
+                     class="form-check-input" {% if v.attended %}checked{% endif %}>
+              <label for="vatt_{{ v.id }}" class="form-check-label">Attended?</label>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Ticket Type</label>
+            <input type="text" name="ticket_type" class="form-control" value="{{ v.ticket_type|default:'' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Seating Section</label>
+            <input type="text" name="seating_section" class="form-control" value="{{ v.seating_section|default:'' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Personal Rating</label>
+            <select name="personal_rating" class="form-select">
+              <option value="">— (no rating)</option>
+              {% for n in "12345" %}
+                <option value="{{ n }}" {% if v.personal_rating|stringformat:"s" == n %}selected{% endif %}>{{ n }} ⭐</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Personal Notes</label>
+            <textarea name="personal_notes" rows="3" class="form-control">{{ v.personal_notes|default:'' }}</textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">✖ Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="delVisit{{ v.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="{% url 'visit_delete' v.id %}" class="modal-content">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{% url 'visits_list' %}">
+      <input type="hidden" name="circuit_id" value="{{ v.circuit_id }}">
+      <div class="modal-header">
+        <h5 class="modal-title">🗑️ Delete Visit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Delete your visit to <strong>{{ v.circuit }}</strong> (trip: {{ v.trip }})?</p>
+        <div class="alert alert-warning mb-0">This cannot be undone.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-danger">🗑️ Yes, delete</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}My Trips — F1 Circuit Journal{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">🗓️ My Trips</h1>
+<p class="text-muted">Plan and manage your F1 race-weekend travel.</p>
+<hr>
+
+<!-- ═══════ SECTION 1 — ADD TRIP FORM ═══════ -->
+<h3 class="mb-3">➕ Add a New Trip</h3>
+<form method="post" action="{% url 'trips_list' %}" class="mb-4 card card-body">
+  {% csrf_token %}
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Trip Name *</label>
+      <input type="text" name="trip_name" class="form-control" placeholder="e.g. Monaco 2025 Weekend" required>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Choose Circuit (auto-fills dates)</label>
+      <select name="circuit_id" id="add_circuit" class="form-select" data-city-map='{}'>
+        <option value="">— No circuit (enter dates manually) —</option>
+        {% for c in circuits %}
+          <option value="{{ c.id }}" data-city="{{ c.city|default:'' }}">{{ c.name }} ({{ c.country }})</option>
+        {% endfor %}
+      </select>
+      <small id="add_circuit_hint" class="text-muted"></small>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Start Date *</label>
+      <input type="date" name="start_date" id="add_start" class="form-control" value="{{ today|date:'Y-m-d' }}" required>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">End Date</label>
+      <input type="date" name="end_date" id="add_end" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Status</label>
+      <select name="status" class="form-select">
+        {% for s in status_options %}
+          <option value="{{ s }}">{{ s|capfirst }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+      <button type="submit" class="btn btn-primary w-100">Add Trip</button>
+    </div>
+    <div class="col-12">
+      <label class="form-label">Notes</label>
+      <textarea name="notes" class="form-control" rows="2" placeholder="Ticket details, hotel, travel tips…"></textarea>
+    </div>
+  </div>
+</form>
+
+<hr>
+
+<!-- ═══════ SECTION 2 — ALL TRIPS TABLE ═══════ -->
+<h3 class="mb-3">📋 All Trips</h3>
+{% if not trips %}
+  <div class="alert alert-info">No trips yet — add your first one above!</div>
+{% else %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Trip</th>
+          <th>Dates</th>
+          <th>Status</th>
+          <th>Circuits</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in trips %}
+        <tr>
+          <td><strong>{{ t.trip_name }}</strong></td>
+          <td>
+            {{ t.start_date|date:"M d, Y"|default:"—" }} →
+            {{ t.end_date|date:"M d, Y"|default:"TBD" }}
+          </td>
+          <td>
+            {% if t.status == 'planned' %}<span class="badge badge-status-planned">🔵 Planned</span>
+            {% elif t.status == 'completed' %}<span class="badge badge-status-completed">✅ Completed</span>
+            {% elif t.status == 'cancelled' %}<span class="badge badge-status-cancelled">❌ Cancelled</span>
+            {% else %}{{ t.status|capfirst }}{% endif %}
+          </td>
+          <td>{{ t.visit_count }}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal" data-bs-target="#editModal{{ t.id }}">✏️ Edit</button>
+            <button class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal" data-bs-target="#deleteModal{{ t.id }}">🗑️ Delete</button>
+          </td>
+        </tr>
+        {% if t.first_city %}
+        <tr>
+          <td colspan="5" class="bg-light">
+            <details>
+              <summary class="text-primary" style="cursor:pointer;">🌍 Explore {{ t.first_city }}</summary>
+              <div class="d-flex gap-2 mt-2">
+                <a href="{{ t.attractions_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
+                  🗺️ Explore {{ t.first_city }} tourist attractions
+                </a>
+                <a href="{{ t.hotels_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
+                  🏨 Hotels in {{ t.first_city }}
+                </a>
+              </div>
+            </details>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+<!-- ═══════ SECTION 3 & 4 — EDIT + DELETE MODALS (one pair per trip) ═══════ -->
+{% for t in trips %}
+<!-- Edit modal -->
+<div class="modal fade" id="editModal{{ t.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form method="post" action="{% url 'trip_edit' t.id %}" class="modal-content">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Edit Trip: {{ t.trip_name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Trip Name *</label>
+            <input type="text" name="trip_name" class="form-control" value="{{ t.trip_name }}" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Associated Circuit</label>
+            <select name="circuit_id" class="form-select">
+              <option value="">— No circuit —</option>
+              {% for c in circuits %}
+                <option value="{{ c.id }}">{{ c.name }} ({{ c.country }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Start Date *</label>
+            <input type="date" name="start_date" class="form-control"
+                   value="{{ t.start_date|date:'Y-m-d' }}" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">End Date</label>
+            <input type="date" name="end_date" class="form-control"
+                   value="{{ t.end_date|date:'Y-m-d' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+              {% for s in status_options %}
+                <option value="{{ s }}" {% if s == t.status %}selected{% endif %}>{{ s|capfirst }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <textarea name="notes" class="form-control" rows="3">{{ t.notes|default:'' }}</textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">✖ Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete modal -->
+<div class="modal fade" id="deleteModal{{ t.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="{% url 'trip_delete' t.id %}" class="modal-content">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">🗑️ Delete Trip</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Delete <strong>"{{ t.trip_name }}"</strong>?</p>
+        <div class="alert alert-warning mb-0">
+          This will also delete all circuit visit records linked to this trip.
+          This cannot be undone.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-danger">🗑️ Yes, delete</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+// Jolpica date autofill for Add Trip form
+(function() {
+  const sel = document.getElementById('add_circuit');
+  const startEl = document.getElementById('add_start');
+  const endEl = document.getElementById('add_end');
+  const hint = document.getElementById('add_circuit_hint');
+  if (!sel) return;
+  sel.addEventListener('change', async function() {
+    const opt = sel.options[sel.selectedIndex];
+    const city = opt.getAttribute('data-city');
+    if (!city) { hint.textContent = ''; return; }
+    hint.textContent = '📅 Looking up race weekend…';
+    try {
+      const resp = await fetch(`{% url 'race_dates_api' %}?city=${encodeURIComponent(city)}`);
+      const data = await resp.json();
+      if (data.start) {
+        startEl.value = data.start;
+        endEl.value = data.end || '';
+        hint.textContent = `📅 Dates filled: ${data.start} → ${data.end || 'TBD'} (race weekend for ${city})`;
+      } else {
+        hint.textContent = '⚠️ No scheduled race found for this circuit — enter dates manually.';
+      }
+    } catch (e) {
+      hint.textContent = '⚠️ Could not fetch race dates.';
+    }
+  });
+})();
+</script>
+{% endblock %}

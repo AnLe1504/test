@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}F1 Circuit Journal — Home{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">🏎️ F1 Circuit Journal</h1>
+<p class="text-muted">Your personal Formula 1 travel tracker — circuits visited, trips planned, dreams catalogued.</p>
+<hr>
+
+<!-- Section 1: Metrics -->
+<h3 class="mb-3">📊 Your Journey at a Glance</h3>
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card metric-card h-100">
+      <div class="card-body">
+        <div class="metric-label">Circuits Visited</div>
+        <div class="metric-value">{{ total_visited }}</div>
+        <small class="text-muted">Circuit visits marked 'Attended'</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card h-100">
+      <div class="card-body">
+        <div class="metric-label">Trips Logged</div>
+        <div class="metric-value">{{ total_trips }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card h-100">
+      <div class="card-body">
+        <div class="metric-label">On Bucket List</div>
+        <div class="metric-value">{{ bucket_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card h-100">
+      <div class="card-body">
+        <div class="metric-label">Highest-Rated Circuit</div>
+        <div class="metric-value" style="font-size:1.25rem;">{{ best_circuit }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- Section 2: Recent visits -->
+<h3 class="mb-3">🕐 Recently Logged Visits</h3>
+{% if not recent_visits %}
+  <div class="alert alert-info">No visits logged yet. Head to <strong>Log a Visit</strong> to add your first one!</div>
+{% else %}
+  <div class="table-responsive mb-4">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Circuit</th>
+          <th>Trip</th>
+          <th>Year</th>
+          <th>Rating</th>
+          <th>Attended</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in recent_visits %}
+        <tr>
+          <td>{{ v.circuit }}</td>
+          <td>{{ v.trip }}</td>
+          <td>{{ v.year }}</td>
+          <td>
+            {% if v.rating %}
+              <div class="d-flex align-items-center gap-2">
+                <div class="rating-bar">
+                  <div class="rating-bar-fill" style="width: {{ v.rating_pct }}%;"></div>
+                </div>
+                <small class="text-muted">{{ v.rating }}/5</small>
+              </div>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>{% if v.attended %}✅{% else %}📋 Planned{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+<hr>
+
+<!-- Section 3: Two columns -->
+<div class="row g-4">
+  <div class="col-md-6">
+    <h3 class="mb-3">🗓️ Next Planned Trip</h3>
+    {% if not next_trip %}
+      <div class="alert alert-info">No upcoming trips planned. Go to <strong>My Trips</strong> to plan one!</div>
+    {% else %}
+      <div class="card">
+        <div class="card-body">
+          <h4 class="card-title">{{ next_trip.trip_name }}</h4>
+          <p class="mb-1"><strong>Dates:</strong>
+            {{ next_trip.start_date|date:"F d, Y"|default:"—" }} →
+            {{ next_trip.end_date|date:"F d, Y"|default:"TBD" }}
+          </p>
+          <p class="mb-1"><strong>Status:</strong>
+            <span class="badge badge-status-{{ next_trip.status }}">{{ next_trip.status|capfirst }}</span>
+          </p>
+          {% if next_trip.notes %}<p class="text-muted small mt-2 mb-0">{{ next_trip.notes }}</p>{% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="col-md-6">
+    <h3 class="mb-3">🏁 Next F1 Race Weekend</h3>
+    <div class="alert alert-secondary">
+      Race weekend info will be wired up in a later task (Jolpica + Wikipedia).
+    </div>
+  </div>
+</div>
+{% endblock %}

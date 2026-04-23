@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+{% block title %}Circuit Explorer — F1 Circuit Journal{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">🗺️ Circuit Explorer</h1>
+<p class="text-muted">Browse every circuit, check your history, and jump straight into logging.</p>
+<hr>
+
+<!-- ═══════ FILTER BAR ═══════ -->
+<form method="get" action="{% url 'circuit_list' %}" class="mb-3" id="filterForm">
+  {% if selected_id %}<input type="hidden" name="circuit" value="{{ selected_id }}">{% endif %}
+  <div class="row g-2 mb-2">
+    <div class="col-md-4">
+      <input type="text" name="q" class="form-control" placeholder="🔍 Search name or country…"
+             value="{{ filters.q }}">
+    </div>
+    <div class="col-md-3">
+      <select name="country" class="form-select" onchange="this.form.submit()">
+        {% for c in countries %}
+          <option value="{{ c }}" {% if c == filters.country %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select name="year" class="form-select" onchange="this.form.submit()">
+        {% for y in years %}
+          <option value="{{ y }}" {% if y == filters.year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <select name="sort" class="form-select" onchange="this.form.submit()">
+        {% for key, label in sort_options %}
+          <option value="{{ key }}" {% if key == filters.sort %}selected{% endif %}>Sort: {{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <div class="btn-group" role="group">
+      {% for s in status_filters %}
+        <input type="radio" class="btn-check" name="status" id="st_{{ forloop.counter }}"
+               value="{{ s }}" {% if s == filters.status %}checked{% endif %}
+               onchange="this.form.submit()">
+        <label class="btn btn-sm btn-outline-secondary" for="st_{{ forloop.counter }}">{{ s }}</label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+  </div>
+</form>
+
+<div class="d-flex gap-3 flex-wrap small text-muted mb-2">
+  <span><span class="legend-dot" style="background:#14b8a6"></span>Visited</span>
+  <span><span class="legend-dot" style="background:#3b82f6"></span>Planned Trip</span>
+  <span><span class="legend-dot" style="background:#f59e0b"></span>Custom</span>
+  <span><span class="legend-dot" style="background:#ef4444"></span>Bucket List</span>
+  <span><span class="legend-dot" style="background:#64748b"></span>Not Visited</span>
+</div>
+
+<p><strong>{{ count }} circuit{{ count|pluralize }} found</strong></p>
+
+{% if not circuits %}
+  <div class="alert alert-info">No circuits match your filters.</div>
+{% else %}
+<!-- ═══════ CARD GRID ═══════ -->
+<div class="row g-3 mb-4">
+  {% for c in circuits %}
+  <div class="col-md-4">
+    <div class="card circuit-card h-100">
+      <div class="status-strip" style="background: {{ c.color }};">
+        <span>{{ c.status_label }}</span>
+      </div>
+      <div class="card-body">
+        <h5 class="card-title mb-1">{{ c.name }}</h5>
+        <div class="text-muted small mb-2">
+          📍 {% if c.city %}{{ c.city }}, {% endif %}{{ c.country }}
+        </div>
+        {% if c.race_countdown %}
+          <div class="small text-muted mb-2">{{ c.race_countdown }}</div>
+        {% endif %}
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <div class="small text-muted">Visits</div>
+            <div class="fs-5 fw-bold">{{ c.visit_count|default:0 }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">Avg Rating</div>
+            {% if c.avg_rating %}
+              <div class="d-flex align-items-center gap-2">
+                <div class="rating-bar">
+                  <div class="rating-bar-fill" style="width: {{ c.avg_rating_pct }}%;"></div>
+                </div>
+                <small class="text-muted">{{ c.avg_rating }}/5</small>
+              </div>
+            {% else %}
+              <span class="text-muted small">—</span>
+            {% endif %}
+          </div>
+        </div>
+        {% if selected_id == c.id %}
+          <a href="?{% if filters.q %}q={{ filters.q }}&{% endif %}country={{ filters.country }}&year={{ filters.year }}&sort={{ filters.sort }}&status={{ filters.status }}"
+             class="btn btn-outline-secondary w-100">🔼 Close Details</a>
+        {% else %}
+          <a href="?{% if filters.q %}q={{ filters.q }}&{% endif %}country={{ filters.country }}&year={{ filters.year }}&sort={{ filters.sort }}&status={{ filters.status }}&circuit={{ c.id }}#detail"
+             class="btn btn-outline-primary w-100">📋 View Details</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══════ DETAIL PANEL ═══════ -->
+{% if detail %}
+{% with c=detail.circuit w=detail.wiki nr=detail.next_race s=detail.summary %}
+<div id="detail" class="card card-body mt-3">
+  <div class="row">
+    <!-- Left -->
+    <div class="col-md-4">
+      <h3 class="mb-1">📍 {{ c.name }}</h3>
+      <div class="text-muted mb-2">{% if c.city %}{{ c.city }}, {% endif %}{{ c.country }}</div>
+      <div class="small text-muted mb-3">
+        {% if c.lap_length_km %}Lap: {{ c.lap_length_km }} km{% endif %}
+        {% if c.first_gp_year %}  ·  First GP: {{ c.first_gp_year }}{% endif %}
+        {% if c.source == 'custom' %}<br>✏️ Custom circuit{% endif %}
+      </div>
+
+      <a href="{% url 'visits_list' %}?circuit_id={{ c.id }}" class="btn btn-primary w-100 mb-2">
+        📍 Log a Visit
+      </a>
+      {% if detail.on_bucket %}
+        <button class="btn btn-outline-danger w-100 mb-2" disabled>⭐ On Bucket List</button>
+      {% else %}
+        <button class="btn btn-outline-danger w-100 mb-2"
+                data-bs-toggle="modal" data-bs-target="#bucketModal">⭐ Add to Bucket List</button>
+      {% endif %}
+    </div>
+
+    <!-- Right -->
+    <div class="col-md-8">
+      <div class="row g-3">
+        {% if w.thumbnail_url %}
+          <div class="col-md-4">
+            <img src="{{ w.thumbnail_url }}" alt="{{ c.name }}" class="img-fluid rounded">
+          </div>
+        {% endif %}
+        <div class="{% if w.thumbnail_url %}col-md-8{% else %}col-12{% endif %}">
+          {% if nr %}
+            {% if nr.upcoming %}
+              <div class="alert alert-info py-2 mb-2">
+                🏁 Next race: <strong>{{ nr.label }}</strong> ({{ nr.days }} days away)
+              </div>
+            {% else %}
+              <div class="small text-muted mb-2">🏁 Last held: {{ nr.label }}</div>
+            {% endif %}
+          {% endif %}
+
+          {% if w.extract %}<p class="small mb-2">{{ w.extract }}</p>{% endif %}
+          {% if w.page_url %}<a href="{{ w.page_url }}" target="_blank" rel="noopener" class="small">📖 Wikipedia</a>{% endif %}
+
+          {% if detail.explore %}
+            <div class="d-flex gap-2 flex-wrap mt-3">
+              <a href="{{ detail.explore.attractions_url }}" target="_blank" rel="noopener"
+                 class="btn btn-sm btn-outline-secondary">🗺️ Explore {{ c.city }}</a>
+              <a href="{{ detail.explore.hotels_url }}" target="_blank" rel="noopener"
+                 class="btn btn-sm btn-outline-secondary">🏨 Hotels in {{ c.city }}</a>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- Summary metrics -->
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="card metric-card h-100"><div class="card-body">
+        <div class="metric-label">Times Attended</div>
+        <div class="metric-value">{{ s.attended }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card metric-card h-100"><div class="card-body">
+        <div class="metric-label">Avg Rating</div>
+        {% if s.avg_rating %}
+          <div class="d-flex align-items-center gap-2 mt-2">
+            <div class="rating-bar"><div class="rating-bar-fill" style="width:{{ s.avg_rating_pct }}%"></div></div>
+            <span class="fw-bold">{{ s.avg_rating }}/5</span>
+          </div>
+        {% else %}
+          <div class="metric-value">—</div>
+        {% endif %}
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card metric-card h-100"><div class="card-body">
+        <div class="metric-label">Fav Seat</div>
+        <div class="metric-value" style="font-size:1.15rem;">{{ s.fav_seat }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card metric-card h-100"><div class="card-body">
+        <div class="metric-label">Fav Ticket</div>
+        <div class="metric-value" style="font-size:1.15rem;">{{ s.fav_ticket }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <h5>Your Visits</h5>
+  {% if not detail.visits %}
+    <div class="alert alert-info">No visits logged for this circuit yet.</div>
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr><th>Year</th><th>Trip</th><th>Ticket</th><th>Seat</th>
+            <th>Rating</th><th>Att.</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for v in detail.visits %}
+        <tr>
+          <td>{{ v.race_year }}</td>
+          <td>{{ v.trip_name }}</td>
+          <td>{{ v.ticket_type|default:"—" }}</td>
+          <td>{{ v.seating_section|default:"—" }}</td>
+          <td>
+            {% if v.personal_rating %}
+              <div class="d-flex align-items-center gap-2">
+                <div class="rating-bar"><div class="rating-bar-fill" style="width:{{ v.rating_pct }}%"></div></div>
+                <small class="text-muted">{{ v.personal_rating }}/5</small>
+              </div>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>{% if v.attended %}✅{% else %}📋{% endif %}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal" data-bs-target="#editVisit{{ v.visit_id }}">✏️</button>
+            <button class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal" data-bs-target="#delVisit{{ v.visit_id }}">🗑️</button>
+          </td>
+        </tr>
+        {% if v.personal_notes %}
+          <tr><td colspan="7" class="small text-muted bg-light">📝 {{ v.personal_notes }}</td></tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Bucket-list modal -->
+{% if not detail.on_bucket %}
+<div class="modal fade" id="bucketModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="{% url 'bucket_add' %}" class="modal-content">
+      {% csrf_token %}
+      <input type="hidden" name="circuit_id" value="{{ c.id }}">
+      <div class="modal-header">
+        <h5 class="modal-title">⭐ Add to Bucket List: {{ c.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Priority</label>
+          <select name="priority" class="form-select">
+            {% for key, label in priority_opts %}
+              <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Notes (optional)</label>
+          <input type="text" name="notes" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-danger">⭐ Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Edit / Delete Visit modals -->
+{% for v in detail.visits %}
+<div class="modal fade" id="editVisit{{ v.visit_id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form method="post" action="{% url 'visit_edit' v.visit_id %}" class="modal-content">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Edit Visit — {{ v.race_year }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Trip *</label>
+            <select name="trip_id" class="form-select" required>
+              {% for t in detail.all_trips %}
+                <option value="{{ t.id }}" {% if t.id == v.trip_id %}selected{% endif %}>
+                  {{ t.trip_name }} ({{ t.start_date|date:"M d, Y" }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Circuit *</label>
+            <select name="circuit_id" class="form-select" required>
+              {% for cc in detail.all_circuits %}
+                <option value="{{ cc.id }}" {% if cc.id == v.circuit_id %}selected{% endif %}>
+                  {{ cc.name }} ({{ cc.country }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Year *</label>
+            <input type="number" name="race_year" class="form-control" min="1950" max="2099"
+                   value="{{ v.race_year }}" required>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <div class="form-check">
+              <input type="checkbox" name="attended" id="att_{{ v.visit_id }}"
+                     class="form-check-input" {% if v.attended %}checked{% endif %}>
+              <label for="att_{{ v.visit_id }}" class="form-check-label">Attended?</label>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Ticket</label>
+            <input type="text" name="ticket_type" class="form-control" value="{{ v.ticket_type|default:'' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Seat</label>
+            <input type="text" name="seating_section" class="form-control" value="{{ v.seating_section|default:'' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Rating</label>
+            <select name="personal_rating" class="form-select">
+              <option value="">— (no rating)</option>
+              {% for n in "12345" %}
+                <option value="{{ n }}" {% if v.personal_rating|stringformat:"s" == n %}selected{% endif %}>{{ n }} ⭐</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <textarea name="personal_notes" rows="2" class="form-control">{{ v.personal_notes|default:'' }}</textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">✖ Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="delVisit{{ v.visit_id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="{% url 'visit_delete' v.visit_id %}" class="modal-content">
+      {% csrf_token %}
+      <input type="hidden" name="circuit_id" value="{{ c.id }}">
+      <div class="modal-header">
+        <h5 class="modal-title">🗑️ Delete Visit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Delete your <strong>{{ v.race_year }} {{ c.name }}</strong> visit?</p>
+        <div class="alert alert-warning mb-0">This cannot be undone.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-danger">🗑️ Yes, delete</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{% endwith %}
+{% endif %}
+{% endblock %}

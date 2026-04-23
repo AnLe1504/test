@@ -1,0 +1,21 @@
+# Streamlit secrets — NEVER commit these
+.streamlit/secrets.toml
+
+# Django env — NEVER commit
+.env
+staticfiles/
+
+# Python virtual environment
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+*.swp

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Bucket List — F1 Circuit Journal{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">⭐ My F1 Bucket List</h1>
+<p class="text-muted">Every circuit you dream of attending — ranked by how likely you are to actually make it.</p>
+<hr>
+
+<!-- ═══════ SECTION 1 — ADD TO BUCKET LIST ═══════ -->
+<h3 class="mb-3">➕ Add a Circuit to Your Bucket List</h3>
+
+{% if not available %}
+  <div class="alert alert-info">Every circuit is already on your bucket list! Nothing left to add.</div>
+{% else %}
+  <form method="post" action="{% url 'bucket_add' %}" class="mb-4 card card-body">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{% url 'bucket_list' %}">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Circuit *</label>
+        <select name="circuit_id" class="form-select" required>
+          {% for c in available %}
+            <option value="{{ c.id }}">{{ c.name }} ({{ c.country }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Priority *</label>
+        <select name="priority" class="form-select" required>
+          <option value="dream">🏆 Dream — I will make this happen</option>
+          <option value="likely">🎯 Likely — On my radar for the next few years</option>
+          <option value="someday" selected>📅 Someday — Would love it if the stars align</option>
+        </select>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" rows="2" class="form-control"
+                  placeholder="Why this circuit? Any specific race year in mind? Dream seats?"></textarea>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">⭐ Add to Bucket List</button>
+      </div>
+    </div>
+  </form>
+{% endif %}
+
+<hr>
+
+<!-- ═══════ SECTION 2 — BUCKET LIST DISPLAY ═══════ -->
+<h3 class="mb-3">📋 Your Bucket List</h3>
+
+{% if not has_entries %}
+  <div class="alert alert-info">Your bucket list is empty — add a circuit above to start dreaming!</div>
+{% else %}
+  {% for key, label, entries in tiers %}
+    {% if entries %}
+      <h4 class="mt-4">{{ label }}</h4>
+      {% for e in entries %}
+        <div class="card mb-3">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h5 class="card-title mb-1">
+                  {{ e.circuit_name }}
+                  {% if e.already_visited %}<span class="badge bg-success ms-2">✅ Already Visited!</span>{% endif %}
+                </h5>
+                <div class="text-muted">📍 {% if e.city %}{{ e.city }}, {% endif %}{{ e.country }}</div>
+                <small class="text-muted">Added: {{ e.created_at|date:"F d, Y" }}</small>
+                {% if e.added_notes %}
+                  <p class="fst-italic mt-2 mb-0">{{ e.added_notes }}</p>
+                {% endif %}
+                {% if e.already_visited %}
+                  <div class="alert alert-info mt-2 mb-0 py-2">
+                    ℹ️ You've attended this circuit! Consider removing it from your bucket list, or keep it if you'd love to go again.
+                  </div>
+                {% endif %}
+              </div>
+              <button class="btn btn-sm btn-outline-danger"
+                      data-bs-toggle="modal" data-bs-target="#delBucket{{ e.bl_id }}">🗑️ Remove</button>
+            </div>
+            {% if e.city %}
+              <div class="row g-2 mt-3">
+                <div class="col-md-6">
+                  <a href="{{ e.attractions_url }}" target="_blank" rel="noopener"
+                     class="btn btn-outline-primary w-100">🗺️ Explore {{ e.city }} attractions</a>
+                </div>
+                <div class="col-md-6">
+                  <a href="{{ e.hotels_url }}" target="_blank" rel="noopener"
+                     class="btn btn-outline-primary w-100">🏨 Hotels in {{ e.city }}</a>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="modal fade" id="delBucket{{ e.bl_id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog">
+            <form method="post" action="{% url 'bucket_remove' e.bl_id %}" class="modal-content">
+              {% csrf_token %}
+              <div class="modal-header">
+                <h5 class="modal-title">🗑️ Remove from Bucket List</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                <p>Remove <strong>{{ e.circuit_name }}</strong> from your bucket list?</p>
+                <div class="alert alert-warning mb-0">The circuit itself is kept — only the bucket list entry is removed.</div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">✖ Cancel</button>
+                <button type="submit" class="btn btn-danger">🗑️ Yes, remove</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% endblock %}

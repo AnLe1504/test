@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Manage Circuits — F1 Circuit Journal{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">🏟️ Manage Circuits</h1>
+<p class="text-muted">Add fictional or future circuits to your journal. API-imported circuits are read-only (protected from deletion).</p>
+<hr>
+
+<!-- ═══════ SECTION 1 — ADD CUSTOM CIRCUIT ═══════ -->
+<h3 class="mb-1">➕ Add a Custom Circuit</h3>
+<p class="text-muted small mb-3">Custom circuits are user-created records — they will not be overwritten by the API seeder.</p>
+
+<form method="post" action="{% url 'circuit_manage' %}" class="mb-4 card card-body">
+  {% csrf_token %}
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Circuit Name *</label>
+      <input type="text" name="name" class="form-control" placeholder="e.g. Hanoi Street Circuit" required>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Country *</label>
+      <input type="text" name="country" class="form-control" placeholder="e.g. Vietnam" required>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">City / Location</label>
+      <input type="text" name="city" class="form-control" placeholder="e.g. Hanoi">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Lap Length (km)</label>
+      <input type="number" name="lap_length_km" class="form-control"
+             min="0" max="30" step="0.001" placeholder="0.000">
+      <small class="text-muted">Leave blank or 0 to store as NULL</small>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">First GP Year</label>
+      <input type="number" name="first_gp_year" class="form-control"
+             min="1950" max="{{ current_year|add:10 }}" placeholder="{{ current_year }}">
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">➕ Add Custom Circuit</button>
+    </div>
+  </div>
+</form>
+
+<hr>
+
+<!-- ═══════ SECTION 2 — SEARCH ═══════ -->
+<h3 class="mb-3">🔍 Circuit List</h3>
+<form method="get" class="mb-3">
+  <div class="input-group">
+    <span class="input-group-text">🔍</span>
+    <input type="text" name="q" value="{{ search }}" class="form-control"
+           placeholder="Search by name or country (e.g. Monaco, Italy, Silverstone…)">
+    <button type="submit" class="btn btn-outline-primary">Search</button>
+    {% if search %}
+      <a href="{% url 'circuit_manage' %}" class="btn btn-outline-secondary">Clear</a>
+    {% endif %}
+  </div>
+</form>
+
+<!-- ═══════ SECTION 3 — CIRCUIT TABLE ═══════ -->
+{% if not circuits %}
+  <div class="alert alert-info">No circuits found. Add one above or run seed_db.py to import from OpenF1.</div>
+{% else %}
+  <p class="text-muted small">{{ count }} circuit{{ count|pluralize }} found</p>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Circuit</th>
+          <th>Country</th>
+          <th>City</th>
+          <th>Lap (km)</th>
+          <th>First GP</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in circuits %}
+        <tr>
+          <td>
+            <strong>{{ c.name }}</strong>
+            {% if c.is_custom %}
+              <span class="badge bg-warning text-dark ms-1">✏️ Custom</span>
+            {% else %}
+              <span class="badge bg-info text-dark ms-1">🌐 API</span>
+            {% endif %}
+          </td>
+          <td>{{ c.country }}</td>
+          <td>{{ c.city|default:"—" }}</td>
+          <td>{{ c.lap_display }}</td>
+          <td>{{ c.first_gp_display }}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal" data-bs-target="#editCircuit{{ c.id }}"
+                    title="Edit this circuit">✏️</button>
+            {% if c.is_custom %}
+              <button class="btn btn-sm btn-outline-danger"
+                      data-bs-toggle="modal" data-bs-target="#delCircuit{{ c.id }}"
+                      title="Delete this custom circuit">🗑️</button>
+            {% else %}
+              <button class="btn btn-sm btn-outline-secondary" disabled
+                      title="API-imported circuits cannot be deleted">🔒</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+<!-- ═══════ SECTION 4 — EDIT / DELETE MODALS ═══════ -->
+{% for c in circuits %}
+<div class="modal fade" id="editCircuit{{ c.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form method="post" action="{% url 'circuit_edit' c.id %}" class="modal-content">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Editing: {{ c.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        {% if not c.is_custom %}
+          <div class="alert alert-info">
+            ℹ️ This is an API-imported circuit. You can edit display fields but it cannot be deleted.
+          </div>
+        {% endif %}
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Circuit Name *</label>
+            <input type="text" name="name" class="form-control" value="{{ c.name }}" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Country *</label>
+            <input type="text" name="country" class="form-control" value="{{ c.country }}" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">City / Location</label>
+            <input type="text" name="city" class="form-control" value="{{ c.city|default:'' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Lap Length (km)</label>
+            <input type="number" name="lap_length_km" class="form-control"
+                   min="0" max="30" step="0.001" value="{{ c.lap_input }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">First GP Year</label>
+            <input type="number" name="first_gp_year" class="form-control"
+                   min="1950" max="{{ current_year|add:10 }}" value="{{ c.first_gp_year|default:'' }}">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">✖ Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if c.is_custom %}
+<div class="modal fade" id="delCircuit{{ c.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="{% url 'circuit_delete' c.id %}" class="modal-content">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">🗑️ Delete Circuit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Delete circuit <strong>{{ c.name }}</strong>?</p>
+        <div class="alert alert-warning mb-0">
+          This will also remove any visits or bucket list entries linked to it. This cannot be undone.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">✖ Cancel</button>
+        <button type="submit" class="btn btn-danger">🗑️ Yes, delete</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}
