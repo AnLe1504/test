@@ -21,11 +21,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-d2am&4fwiw%%!id+%j8o+6(uwshu(#7-+m=wgk+0fvkub-1gy0'
+###Replace with variable
+
+
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default='False', cast=bool)
 
 ALLOWED_HOSTS = []
+CSRF_TRUSTED_ORIGINS = [
+    f"https://{h}" for h in ALLOWED_HOSTS if h and not h.startswith('.')
+]
+
 
 
 # Application definition
