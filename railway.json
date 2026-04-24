@@ -1,6 +1,6 @@
 {
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "DOCKERFILE"
   },
   "deploy": {
     "startCommand": "gunicorn f1journal.wsgi --bind 0.0.0.0:$PORT"
