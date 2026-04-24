@@ -6,6 +6,8 @@ from django.http import JsonResponse, HttpResponseBadRequest
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import redirect_to_login
 
 import urllib.parse
 from collections import Counter
@@ -177,6 +179,7 @@ def _parse_date(s):
         return None
 
 
+@login_required
 def _trip_add(request):
     trip_name = (request.POST.get('trip_name') or '').strip()
     start_date = _parse_date(request.POST.get('start_date'))
@@ -220,6 +223,7 @@ def _trip_add(request):
     return redirect('trips_list')
 
 
+@login_required
 @require_POST
 def trip_edit(request, trip_id):
     trip_name = (request.POST.get('trip_name') or '').strip()
@@ -263,6 +267,7 @@ def trip_edit(request, trip_id):
     return redirect('trips_list')
 
 
+@login_required
 @require_POST
 def trip_delete(request, trip_id):
     try:
@@ -521,6 +526,7 @@ def _build_detail(circuit_id: int, today: date) -> dict | None:
     }
 
 
+@login_required
 @require_POST
 def bucket_add(request):
     circuit_id = request.POST.get("circuit_id")
@@ -562,6 +568,7 @@ def _visit_redirect(request, circuit_id):
     return redirect("/circuits/")
 
 
+@login_required
 @require_POST
 def visit_edit(request, visit_id):
     trip_id = request.POST.get("trip_id")
@@ -605,6 +612,7 @@ def visit_edit(request, visit_id):
     return _visit_redirect(request, circuit_id)
 
 
+@login_required
 @require_POST
 def visit_delete(request, visit_id):
     circuit_id = request.POST.get("circuit_id") or ""
@@ -659,6 +667,7 @@ def visits_list(request):
     })
 
 
+@login_required
 def _visit_add(request):
     trip_id = request.POST.get("trip_id")
     circuit_id = request.POST.get("circuit_id")
@@ -773,6 +782,7 @@ def bucket_list(request):
     })
 
 
+@login_required
 @require_POST
 def bucket_remove(request, bl_id):
     try:
@@ -818,6 +828,8 @@ def _validate_circuit_form(post):
 
 def circuit_manage(request):
     if request.method == "POST":
+        if not request.user.is_authenticated:
+            return redirect_to_login(request.get_full_path())
         name, country, city, lap_val, year_val, errors = _validate_circuit_form(request.POST)
         if errors:
             for e in errors:
@@ -870,6 +882,7 @@ def circuit_manage(request):
     })
 
 
+@login_required
 @require_POST
 def circuit_edit(request, circuit_id):
     name, country, city, lap_val, year_val, errors = _validate_circuit_form(request.POST)
@@ -894,6 +907,7 @@ def circuit_edit(request, circuit_id):
     return redirect("circuit_manage")
 
 
+@login_required
 @require_POST
 def circuit_delete(request, circuit_id):
     try:
