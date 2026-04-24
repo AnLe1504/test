@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load rating_tags %}
 {% block title %}F1 Circuit Journal — Home{% endblock %}
 
 {% block content %}
@@ -69,16 +70,7 @@
           <td>{{ v.trip }}</td>
           <td>{{ v.year }}</td>
           <td>
-            {% if v.rating %}
-              <div class="d-flex align-items-center gap-2">
-                <div class="rating-bar">
-                  <div class="rating-bar-fill" style="width: {{ v.rating_pct }}%;"></div>
-                </div>
-                <small class="text-muted">{{ v.rating }}/5</small>
-              </div>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
+            <span class="star-rating {{ v.rating|star_color_class }}">{{ v.rating|star_rating }}</span>
           </td>
           <td>{% if v.attended %}✅{% else %}📋 Planned{% endif %}</td>
         </tr>
@@ -115,9 +107,53 @@
 
   <div class="col-md-6">
     <h3 class="mb-3">🏁 Next F1 Race Weekend</h3>
-    <div class="alert alert-secondary">
-      Race weekend info will be wired up in a later task (Jolpica + Wikipedia).
-    </div>
+    {% if not next_race %}
+      <div class="alert alert-secondary">No upcoming race found on the F1 calendar.</div>
+    {% else %}
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>🏁 Next F1 Race Weekend</span>
+          {% if next_race.days_away == 0 %}
+            <span class="badge bg-danger">Today!</span>
+          {% elif next_race.days_away <= 7 %}
+            <span class="badge bg-warning text-dark">{{ next_race.days_away }} day{{ next_race.days_away|pluralize }} away</span>
+          {% else %}
+            <span class="badge bg-success">{{ next_race.days_away }} days away</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <h4 class="card-title mb-3">{{ next_race.race_name }}</h4>
+          <div class="row g-3">
+            <div class="col-5">
+              {% if wiki.thumbnail_url %}
+                <img src="{{ wiki.thumbnail_url }}" alt="{{ next_race.circuit_name }}"
+                     class="img-fluid rounded">
+              {% else %}
+                <div class="d-flex align-items-center justify-content-center bg-light rounded text-center p-3"
+                     style="min-height:140px;">
+                  <small class="text-muted">{{ next_race.circuit_name }}</small>
+                </div>
+              {% endif %}
+            </div>
+            <div class="col-7">
+              <div class="fw-semibold">{{ next_race.circuit_name }}</div>
+              <div class="text-muted small mb-2">📍 {{ next_race.locality }}, {{ next_race.country }}</div>
+              <div class="mb-2"><strong>{{ next_race.date|date:"F d, Y" }}</strong>
+                <span class="text-muted">({{ next_race.date|date:"l" }})</span></div>
+              {% if wiki.extract_short %}
+                <p class="small mb-0">{{ wiki.extract_short }}</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% if wiki.page_url %}
+          <div class="card-footer bg-white">
+            <a href="{{ wiki.page_url }}" target="_blank" rel="noopener"
+               class="btn btn-sm btn-outline-primary">📖 Learn More</a>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

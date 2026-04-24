@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from django.db import connection, transaction
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.shortcuts import render, redirect
@@ -15,6 +15,7 @@ from .utils import (
     get_race_info_for_city,
     fetch_wikipedia_summary,
     sort_circuits_by_race_date,
+    _fetch_schedule,
 )
 
 
@@ -71,8 +72,6 @@ def home_view(request):
         JOIN trips    t ON t.id = cv.trip_id
         ORDER BY cv.created_at DESC LIMIT 5;
     """)
-    for r in recent_visits:
-        r['rating_pct'] = int((r['rating'] or 0) * 20)
 
     next_trip_rows = _fetchall("""
         SELECT trip_name, start_date, end_date, status, notes
@@ -82,6 +81,42 @@ def home_view(request):
     """)
     next_trip = next_trip_rows[0] if next_trip_rows else None
 
+    today = date.today()
+    next_race = None
+    wiki = None
+    for year in (today.year, today.year + 1):
+        for r in _fetch_schedule(year):
+            raw = (r.get("date") or "")[:10]
+            try:
+                d = datetime.strptime(raw, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if d >= today:
+                circuit = r.get("Circuit") or {}
+                loc = circuit.get("Location") or {}
+                next_race = {
+                    "race_name": r.get("raceName", ""),
+                    "circuit_name": circuit.get("circuitName", ""),
+                    "locality": loc.get("locality", ""),
+                    "country": loc.get("country", ""),
+                    "date": d,
+                    "days_away": (d - today).days,
+                }
+                break
+        if next_race:
+            break
+    if next_race:
+        wiki = fetch_wikipedia_summary(next_race["circuit_name"])
+        extract = (wiki.get("extract") or "").strip()
+        if extract:
+            parts = extract.replace("\n", " ").split(". ")
+            short = ". ".join(parts[:2]).strip()
+            if short and not short.endswith("."):
+                short += "."
+            wiki["extract_short"] = short
+        else:
+            wiki["extract_short"] = ""
+
     return render(request, 'core/home.html', {
         'total_visited': total_visited,
         'total_trips': total_trips,
@@ -89,7 +124,9 @@ def home_view(request):
         'best_circuit': best_circuit or '—',
         'recent_visits': recent_visits,
         'next_trip': next_trip,
-        'today': date.today(),
+        'next_race': next_race,
+        'wiki': wiki,
+        'today': today,
     })
 
 
@@ -366,7 +403,6 @@ def circuit_list(request):
                 r["race_countdown"] = f"🏁 {rd.strftime('%b %d, %Y')} · TODAY"
             else:
                 r["race_countdown"] = f"🏁 {rd.strftime('%b %d, %Y')} (past)"
-        r["avg_rating_pct"] = int((float(r["avg_rating"]) if r["avg_rating"] else 0) * 20)
 
     # Detail panel data
     detail = None
@@ -392,6 +428,16 @@ def circuit_list(request):
     return render(request, "core/circuits.html", ctx)
 
 
+def circuit_detail_panel(request, circuit_id):
+    detail = _build_detail(circuit_id, date.today())
+    if not detail:
+        return HttpResponseBadRequest("Circuit not found.")
+    return render(request, "core/_circuit_detail_panel.html", {
+        "detail": detail,
+        "priority_opts": PRIORITY_OPTS,
+    })
+
+
 def _build_detail(circuit_id: int, today: date) -> dict | None:
     cinfo = _fetchone_row(
         "SELECT id, name, country, city, lap_length_km, first_gp_year, source "
@@ -411,9 +457,6 @@ def _build_detail(circuit_id: int, today: date) -> dict | None:
         ORDER BY cv.race_year DESC;
         """, (circuit_id,)
     )
-    for v in visits:
-        v["rating_pct"] = int((v["personal_rating"] or 0) * 20)
-
     on_bucket = _fetchone(
         "SELECT 1 FROM bucket_list WHERE circuit_id = %s LIMIT 1;", (circuit_id,)
     ) is not None
@@ -444,7 +487,6 @@ def _build_detail(circuit_id: int, today: date) -> dict | None:
     summary = {
         "attended": len(attended),
         "avg_rating": avg_r,
-        "avg_rating_pct": int((avg_r or 0) * 20),
         "fav_seat": Counter(seats).most_common(1)[0][0] if seats else "—",
         "fav_ticket": Counter(tickets).most_common(1)[0][0] if tickets else "—",
     }
@@ -607,9 +649,6 @@ def visits_list(request):
         JOIN trips    t ON t.id = cv.trip_id
         ORDER BY cv.race_year DESC, c.name;
     """)
-    for v in visits:
-        v["rating_pct"] = int((v["personal_rating"] or 0) * 20)
-
     return render(request, "core/log_visit.html", {
         "trips": trips,
         "circuits": circuits,

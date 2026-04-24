@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     home_view,
     trips_list, trip_edit, trip_delete, race_dates_api,
-    circuit_list, bucket_add, visit_edit, visit_delete,
+    circuit_list, circuit_detail_panel, bucket_add, visit_edit, visit_delete,
     visits_list, bucket_list, bucket_remove,
     circuit_manage, circuit_edit, circuit_delete,
 )
@@ -14,6 +14,7 @@ urlpatterns = [
     path('trips/<int:trip_id>/delete/', trip_delete, name='trip_delete'),
     path('api/race-dates/', race_dates_api, name='race_dates_api'),
     path('circuits/', circuit_list, name='circuit_list'),
+    path('circuits/<int:circuit_id>/panel/', circuit_detail_panel, name='circuit_panel'),
     path('bucket-list/add/', bucket_add, name='bucket_add'),
     path('visits/', visits_list, name='visits_list'),
     path('visits/<int:visit_id>/edit/', visit_edit, name='visit_edit'),

@@ -97,11 +97,15 @@
             <details>
               <summary class="text-primary" style="cursor:pointer;">🌍 Explore {{ t.first_city }}</summary>
               <div class="d-flex gap-2 mt-2">
-                <a href="{{ t.attractions_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
-                  🗺️ Explore {{ t.first_city }} tourist attractions
+                <a href="https://www.booking.com/searchresults.html?ss={{ t.first_city|urlencode }}&lang=en-us"
+                   target="_blank" rel="noopener"
+                   class="btn btn-booking btn-sm">
+                  🏨 Book Hotels in {{ t.first_city }} <small>(Booking.com)</small>
                 </a>
-                <a href="{{ t.hotels_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
-                  🏨 Hotels in {{ t.first_city }}
+                <a href="https://www.expedia.com/Flights-Search?leg1=from%3AANY%2Cto%3A{{ t.first_city|urlencode }}&mode=search&trip=oneway"
+                   target="_blank" rel="noopener"
+                   class="btn btn-expedia btn-sm">
+                  ✈️ Find Flights to {{ t.first_city }} <small>(Expedia)</small>
                 </a>
               </div>
             </details>

@@ -81,12 +81,18 @@
             {% if e.city %}
               <div class="row g-2 mt-3">
                 <div class="col-md-6">
-                  <a href="{{ e.attractions_url }}" target="_blank" rel="noopener"
-                     class="btn btn-outline-primary w-100">🗺️ Explore {{ e.city }} attractions</a>
+                  <a href="https://www.booking.com/searchresults.html?ss={{ e.city|urlencode }}&lang=en-us"
+                     target="_blank" rel="noopener"
+                     class="btn btn-booking btn-sm w-100">
+                    🏨 Book Hotels in {{ e.city }} <small>(Booking.com)</small>
+                  </a>
                 </div>
                 <div class="col-md-6">
-                  <a href="{{ e.hotels_url }}" target="_blank" rel="noopener"
-                     class="btn btn-outline-primary w-100">🏨 Hotels in {{ e.city }}</a>
+                  <a href="https://www.expedia.com/Flights-Search?leg1=from%3AANY%2Cto%3A{{ e.city|urlencode }}&mode=search&trip=oneway"
+                     target="_blank" rel="noopener"
+                     class="btn btn-expedia btn-sm w-100">
+                    ✈️ Find Flights to {{ e.city }} <small>(Expedia)</small>
+                  </a>
                 </div>
               </div>
             {% endif %}
