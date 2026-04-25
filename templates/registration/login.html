@@ -35,6 +35,10 @@
           <input type="hidden" name="next" value="{{ next }}">
           <button type="submit" class="btn btn-primary w-100">Sign in</button>
         </form>
+
+        <p class="text-center small text-muted mt-3 mb-0">
+          Don't have an account? <a href="{% url 'register' %}">Create account</a>
+        </p>
       </div>
     </div>
   </div>

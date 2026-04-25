@@ -8,6 +8,8 @@ from django.contrib import messages
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
+from django.contrib.auth import login as auth_login
+from django.contrib.auth.forms import UserCreationForm
 
 import urllib.parse
 from collections import Counter
@@ -22,6 +24,27 @@ from .utils import (
 
 
 STATUS_OPTIONS = ["planned", "completed", "cancelled"]
+
+
+def _user_id(request):
+    """Return the current user's id, or 0 for anonymous users (which never
+    matches any row, so anon users see empty data instead of someone else's)."""
+    return request.user.id if request.user.is_authenticated else 0
+
+
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect("home")
+    if request.method == "POST":
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            auth_login(request, user)
+            messages.success(request, f"Welcome, {user.username}! Your account is ready.")
+            return redirect("home")
+    else:
+        form = UserCreationForm()
+    return render(request, "registration/register.html", {"form": form})
 
 
 def _fetchall(sql, params=()):
@@ -52,18 +75,24 @@ def _fetchone_row(sql, params=()):
 # HOME
 # ─────────────────────────────────────────────────────────────────────────────
 def home_view(request):
+    uid = _user_id(request)
     total_visited = _fetchone(
-        "SELECT COUNT(*) FROM circuit_visits WHERE attended = true;"
+        "SELECT COUNT(*) FROM circuit_visits WHERE attended = true AND user_id = %s;",
+        (uid,),
     ) or 0
-    total_trips = _fetchone("SELECT COUNT(*) FROM trips;") or 0
-    bucket_count = _fetchone("SELECT COUNT(*) FROM bucket_list;") or 0
+    total_trips = _fetchone(
+        "SELECT COUNT(*) FROM trips WHERE user_id = %s;", (uid,)
+    ) or 0
+    bucket_count = _fetchone(
+        "SELECT COUNT(*) FROM bucket_list WHERE user_id = %s;", (uid,)
+    ) or 0
     best_circuit = _fetchone("""
         SELECT c.name FROM circuit_visits cv
         JOIN circuits c ON c.id = cv.circuit_id
-        WHERE cv.personal_rating IS NOT NULL
+        WHERE cv.personal_rating IS NOT NULL AND cv.user_id = %s
         GROUP BY c.id, c.name
         ORDER BY AVG(cv.personal_rating) DESC LIMIT 1;
-    """)
+    """, (uid,))
 
     recent_visits = _fetchall("""
         SELECT c.name AS circuit, t.trip_name AS trip,
@@ -72,15 +101,16 @@ def home_view(request):
         FROM circuit_visits cv
         JOIN circuits c ON c.id = cv.circuit_id
         JOIN trips    t ON t.id = cv.trip_id
+        WHERE cv.user_id = %s
         ORDER BY cv.created_at DESC LIMIT 5;
-    """)
+    """, (uid,))
 
     next_trip_rows = _fetchall("""
         SELECT trip_name, start_date, end_date, status, notes
         FROM trips
-        WHERE status = 'planned' AND start_date >= CURRENT_DATE
+        WHERE status = 'planned' AND start_date >= CURRENT_DATE AND user_id = %s
         ORDER BY start_date ASC LIMIT 1;
-    """)
+    """, (uid,))
     next_trip = next_trip_rows[0] if next_trip_rows else None
 
     today = date.today()
@@ -148,11 +178,12 @@ def trips_list(request):
             MIN(c.city)    AS first_city,
             MIN(c.country) AS first_country
         FROM trips t
-        LEFT JOIN circuit_visits cv ON cv.trip_id  = t.id
+        LEFT JOIN circuit_visits cv ON cv.trip_id  = t.id AND cv.user_id = t.user_id
         LEFT JOIN circuits       c  ON c.id        = cv.circuit_id
+        WHERE t.user_id = %s
         GROUP BY t.id
         ORDER BY t.start_date DESC NULLS LAST;
-    """)
+    """, (_user_id(request),))
 
     import urllib.parse
     for t in trips:
@@ -200,22 +231,23 @@ def _trip_add(request):
     if status not in STATUS_OPTIONS:
         return HttpResponseBadRequest("Invalid status.")
 
+    uid = request.user.id
     try:
         with transaction.atomic(), connection.cursor() as cur:
             cur.execute(
-                "INSERT INTO trips (trip_name, start_date, end_date, status, notes) "
-                "VALUES (%s, %s, %s, %s, %s) RETURNING id;",
-                (trip_name, start_date, end_date, status, notes),
+                "INSERT INTO trips (trip_name, start_date, end_date, status, notes, user_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;",
+                (trip_name, start_date, end_date, status, notes, uid),
             )
             new_trip_id = cur.fetchone()[0]
             if circuit_id:
                 cur.execute(
                     """
-                    INSERT INTO circuit_visits (trip_id, circuit_id, race_year, attended)
-                    VALUES (%s, %s, %s, false)
+                    INSERT INTO circuit_visits (trip_id, circuit_id, race_year, attended, user_id)
+                    VALUES (%s, %s, %s, false, %s)
                     ON CONFLICT (trip_id, circuit_id, race_year) DO NOTHING;
                     """,
-                    (new_trip_id, int(circuit_id), start_date.year),
+                    (new_trip_id, int(circuit_id), start_date.year, uid),
                 )
         messages.success(request, f"Trip '{trip_name}' added!")
     except Exception as e:
@@ -245,21 +277,22 @@ def trip_edit(request, trip_id):
     if status not in STATUS_OPTIONS:
         return HttpResponseBadRequest("Invalid status.")
 
+    uid = request.user.id
     try:
         with transaction.atomic(), connection.cursor() as cur:
             cur.execute(
                 "UPDATE trips SET trip_name=%s, start_date=%s, end_date=%s, "
-                "status=%s, notes=%s WHERE id=%s;",
-                (trip_name, start_date, end_date, status, notes, trip_id),
+                "status=%s, notes=%s WHERE id=%s AND user_id=%s;",
+                (trip_name, start_date, end_date, status, notes, trip_id, uid),
             )
             if circuit_id:
                 cur.execute(
                     """
-                    INSERT INTO circuit_visits (trip_id, circuit_id, race_year, attended)
-                    VALUES (%s, %s, %s, false)
+                    INSERT INTO circuit_visits (trip_id, circuit_id, race_year, attended, user_id)
+                    VALUES (%s, %s, %s, false, %s)
                     ON CONFLICT (trip_id, circuit_id, race_year) DO NOTHING;
                     """,
-                    (trip_id, int(circuit_id), start_date.year),
+                    (trip_id, int(circuit_id), start_date.year, uid),
                 )
         messages.success(request, "Trip updated!")
     except Exception as e:
@@ -272,7 +305,8 @@ def trip_edit(request, trip_id):
 def trip_delete(request, trip_id):
     try:
         with connection.cursor() as cur:
-            cur.execute("DELETE FROM trips WHERE id = %s;", (trip_id,))
+            cur.execute("DELETE FROM trips WHERE id = %s AND user_id = %s;",
+                        (trip_id, request.user.id))
         messages.success(request, "Trip deleted.")
     except Exception as e:
         messages.error(request, f"Database error: {e}")
@@ -337,7 +371,8 @@ def circuit_list(request):
     years = ["All Years"] + [
         str(r["race_year"]) for r in _fetchall(
             "SELECT DISTINCT race_year FROM circuit_visits "
-            "WHERE race_year IS NOT NULL ORDER BY race_year DESC;"
+            "WHERE race_year IS NOT NULL AND user_id = %s ORDER BY race_year DESC;",
+            (_user_id(request),),
         )
     ]
 
@@ -361,6 +396,7 @@ def circuit_list(request):
     if sort == "upcoming":
         sort_sql = "c.name"
 
+    uid = _user_id(request)
     sql = f"""
         SELECT c.id, c.name, c.country, c.city, c.lap_length_km,
                c.first_gp_year, c.source, c.created_at,
@@ -369,14 +405,14 @@ def circuit_list(request):
                MAX(CASE WHEN bl.circuit_id IS NOT NULL THEN 1 ELSE 0 END)                         AS on_bucket_list,
                MAX(CASE WHEN t.status = 'planned' AND cv.attended = false THEN 1 ELSE 0 END)      AS trip_planned
         FROM circuits c
-        LEFT JOIN circuit_visits cv ON cv.circuit_id = c.id
-        LEFT JOIN trips          t  ON cv.trip_id    = t.id
-        LEFT JOIN bucket_list    bl ON bl.circuit_id = c.id
+        LEFT JOIN circuit_visits cv ON cv.circuit_id = c.id AND cv.user_id = %s
+        LEFT JOIN trips          t  ON cv.trip_id    = t.id AND t.user_id  = %s
+        LEFT JOIN bucket_list    bl ON bl.circuit_id = c.id AND bl.user_id = %s
         {where_clause}
         GROUP BY c.id
         ORDER BY {sort_sql};
     """
-    rows = _fetchall(sql, tuple(params))
+    rows = _fetchall(sql, (uid, uid, uid) + tuple(params))
 
     # Status filter (post-query)
     status_pred = {
@@ -412,7 +448,7 @@ def circuit_list(request):
     # Detail panel data
     detail = None
     if selected_id:
-        detail = _build_detail(selected_id, today)
+        detail = _build_detail(selected_id, today, uid)
 
     ctx = {
         "today": today,
@@ -434,7 +470,7 @@ def circuit_list(request):
 
 
 def circuit_detail_panel(request, circuit_id):
-    detail = _build_detail(circuit_id, date.today())
+    detail = _build_detail(circuit_id, date.today(), _user_id(request))
     if not detail:
         return HttpResponseBadRequest("Circuit not found.")
     return render(request, "core/_circuit_detail_panel.html", {
@@ -443,7 +479,7 @@ def circuit_detail_panel(request, circuit_id):
     })
 
 
-def _build_detail(circuit_id: int, today: date) -> dict | None:
+def _build_detail(circuit_id: int, today: date, uid: int) -> dict | None:
     cinfo = _fetchone_row(
         "SELECT id, name, country, city, lap_length_km, first_gp_year, source "
         "FROM circuits WHERE id = %s;", (circuit_id,)
@@ -458,12 +494,13 @@ def _build_detail(circuit_id: int, today: date) -> dict | None:
                cv.attended, cv.trip_id, cv.circuit_id
         FROM circuit_visits cv
         JOIN trips t ON t.id = cv.trip_id
-        WHERE cv.circuit_id = %s
+        WHERE cv.circuit_id = %s AND cv.user_id = %s
         ORDER BY cv.race_year DESC;
-        """, (circuit_id,)
+        """, (circuit_id, uid),
     )
     on_bucket = _fetchone(
-        "SELECT 1 FROM bucket_list WHERE circuit_id = %s LIMIT 1;", (circuit_id,)
+        "SELECT 1 FROM bucket_list WHERE circuit_id = %s AND user_id = %s LIMIT 1;",
+        (circuit_id, uid),
     ) is not None
 
     wiki = fetch_wikipedia_summary(cinfo["name"])
@@ -509,7 +546,8 @@ def _build_detail(circuit_id: int, today: date) -> dict | None:
 
     # Data for the visit edit modal selects
     all_trips = _fetchall(
-        "SELECT id, trip_name, start_date FROM trips ORDER BY start_date DESC;"
+        "SELECT id, trip_name, start_date FROM trips WHERE user_id = %s "
+        "ORDER BY start_date DESC;", (uid,),
     )
     all_circuits = _fetchall("SELECT id, name, country FROM circuits ORDER BY name;")
 
@@ -537,18 +575,20 @@ def bucket_add(request):
     valid = {p[0] for p in PRIORITY_OPTS}
     if priority not in valid:
         return HttpResponseBadRequest("Invalid priority.")
+    uid = request.user.id
     try:
         exists = _fetchone(
-            "SELECT 1 FROM bucket_list WHERE circuit_id = %s LIMIT 1;", (circuit_id,)
+            "SELECT 1 FROM bucket_list WHERE circuit_id = %s AND user_id = %s LIMIT 1;",
+            (circuit_id, uid),
         )
         if exists:
             messages.error(request, "This circuit is already on your bucket list!")
         else:
             with connection.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO bucket_list (circuit_id, priority, added_notes) "
-                    "VALUES (%s, %s, %s);",
-                    (int(circuit_id), priority, notes),
+                    "INSERT INTO bucket_list (circuit_id, priority, added_notes, user_id) "
+                    "VALUES (%s, %s, %s, %s);",
+                    (int(circuit_id), priority, notes, uid),
                 )
             messages.success(request, "Added to bucket list!")
     except Exception as e:
@@ -589,12 +629,14 @@ def visit_edit(request, visit_id):
         messages.error(request, "Year and rating must be numeric.")
         return _visit_redirect(request, circuit_id)
 
+    uid = request.user.id
     try:
         with connection.cursor() as cur:
             cur.execute(
                 "SELECT id FROM circuit_visits "
-                "WHERE trip_id=%s AND circuit_id=%s AND race_year=%s AND id != %s;",
-                (trip_id, circuit_id, year_i, visit_id),
+                "WHERE trip_id=%s AND circuit_id=%s AND race_year=%s AND id != %s "
+                "AND user_id = %s;",
+                (trip_id, circuit_id, year_i, visit_id, uid),
             )
             if cur.fetchone():
                 messages.error(request, "A duplicate visit already exists.")
@@ -602,9 +644,9 @@ def visit_edit(request, visit_id):
                 cur.execute(
                     "UPDATE circuit_visits SET trip_id=%s, circuit_id=%s, race_year=%s, "
                     "ticket_type=%s, seating_section=%s, personal_rating=%s, "
-                    "personal_notes=%s, attended=%s WHERE id=%s;",
+                    "personal_notes=%s, attended=%s WHERE id=%s AND user_id=%s;",
                     (trip_id, circuit_id, year_i, ticket, seat,
-                     rating, notes, attended, visit_id),
+                     rating, notes, attended, visit_id, uid),
                 )
                 messages.success(request, "Visit updated!")
     except Exception as e:
@@ -618,7 +660,8 @@ def visit_delete(request, visit_id):
     circuit_id = request.POST.get("circuit_id") or ""
     try:
         with connection.cursor() as cur:
-            cur.execute("DELETE FROM circuit_visits WHERE id = %s;", (visit_id,))
+            cur.execute("DELETE FROM circuit_visits WHERE id = %s AND user_id = %s;",
+                        (visit_id, request.user.id))
         messages.success(request, "Visit deleted.")
     except Exception as e:
         messages.error(request, f"Database error: {e}")
@@ -632,8 +675,10 @@ def visits_list(request):
     if request.method == "POST":
         return _visit_add(request)
 
+    uid = _user_id(request)
     trips = _fetchall(
-        "SELECT id, trip_name, start_date FROM trips ORDER BY start_date DESC;"
+        "SELECT id, trip_name, start_date FROM trips WHERE user_id = %s "
+        "ORDER BY start_date DESC;", (uid,),
     )
     circuits = _fetchall(
         "SELECT id, name, country, city FROM circuits ORDER BY name;"
@@ -655,8 +700,9 @@ def visits_list(request):
         FROM circuit_visits cv
         JOIN circuits c ON c.id = cv.circuit_id
         JOIN trips    t ON t.id = cv.trip_id
+        WHERE cv.user_id = %s
         ORDER BY cv.race_year DESC, c.name;
-    """)
+    """, (uid,))
     return render(request, "core/log_visit.html", {
         "trips": trips,
         "circuits": circuits,
@@ -695,12 +741,13 @@ def _visit_add(request):
         messages.error(request, f"Race Year must be between 1950 and {current_year + 2}.")
         return redirect("visits_list")
 
+    uid = request.user.id
     try:
         with connection.cursor() as cur:
             cur.execute(
                 "SELECT id FROM circuit_visits "
-                "WHERE trip_id=%s AND circuit_id=%s AND race_year=%s;",
-                (trip_id, circuit_id, year_i),
+                "WHERE trip_id=%s AND circuit_id=%s AND race_year=%s AND user_id=%s;",
+                (trip_id, circuit_id, year_i, uid),
             )
             if cur.fetchone():
                 messages.error(
@@ -713,10 +760,10 @@ def _visit_add(request):
                 """
                 INSERT INTO circuit_visits
                     (trip_id, circuit_id, race_year, ticket_type,
-                     seating_section, personal_rating, personal_notes, attended)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                     seating_section, personal_rating, personal_notes, attended, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
                 """,
-                (trip_id, circuit_id, year_i, ticket, seat, rating, notes, attended),
+                (trip_id, circuit_id, year_i, ticket, seat, rating, notes, attended, uid),
             )
         messages.success(request, "Visit logged!")
     except Exception as e:
@@ -725,11 +772,12 @@ def _visit_add(request):
 
 
 def bucket_list(request):
+    uid = _user_id(request)
     available = _fetchall("""
         SELECT id, name, country FROM circuits
-        WHERE id NOT IN (SELECT circuit_id FROM bucket_list)
+        WHERE id NOT IN (SELECT circuit_id FROM bucket_list WHERE user_id = %s)
         ORDER BY name;
-    """)
+    """, (uid,))
     rows = _fetchall("""
         SELECT
             bl.id AS bl_id,
@@ -742,10 +790,11 @@ def bucket_list(request):
             c.city,
             EXISTS (
                 SELECT 1 FROM circuit_visits cv
-                WHERE cv.circuit_id = c.id AND cv.attended = true
+                WHERE cv.circuit_id = c.id AND cv.attended = true AND cv.user_id = %s
             ) AS already_visited
         FROM bucket_list bl
         JOIN circuits c ON c.id = bl.circuit_id
+        WHERE bl.user_id = %s
         ORDER BY
             CASE bl.priority
                 WHEN 'dream' THEN 1
@@ -753,7 +802,7 @@ def bucket_list(request):
                 WHEN 'someday' THEN 3
             END,
             bl.created_at ASC;
-    """)
+    """, (uid, uid))
 
     tiers = [
         ("dream", "🏆 Dream", []),
@@ -787,7 +836,8 @@ def bucket_list(request):
 def bucket_remove(request, bl_id):
     try:
         with connection.cursor() as cur:
-            cur.execute("DELETE FROM bucket_list WHERE id = %s;", (bl_id,))
+            cur.execute("DELETE FROM bucket_list WHERE id = %s AND user_id = %s;",
+                        (bl_id, request.user.id))
         messages.success(request, "Removed from bucket list.")
     except Exception as e:
         messages.error(request, f"Database error: {e}")

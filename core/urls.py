@@ -1,6 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from .views import (
+    register_view,
     home_view,
     trips_list, trip_edit, trip_delete, race_dates_api,
     circuit_list, circuit_detail_panel, bucket_add, visit_edit, visit_delete,
@@ -11,6 +12,7 @@ from .views import (
 urlpatterns = [
     path('login/', auth_views.LoginView.as_view(), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+    path('register/', register_view, name='register'),
     path('', home_view, name='home'),
     path('trips/', trips_list, name='trips_list'),
     path('trips/<int:trip_id>/edit/', trip_edit, name='trip_edit'),
